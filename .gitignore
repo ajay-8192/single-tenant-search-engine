@@ -1,0 +1,57 @@
+# Node.js / Astro frontend
+node_modules/
+dist/
+.astro/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Go / crawler-gateway-go
+/services/crawler-gateway-go/crawler-gateway-go
+/services/crawler-gateway-go/gateway
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work
+go.work.sum
+
+# C++ / index-compute-cpp
+/services/index-compute-cpp/build/
+/services/index-compute-cpp/cmake-build-*/
+/services/index-compute-cpp/out/
+/services/index-compute-cpp/index_compute_server
+/services/index-compute-cpp/search_engine.pb.*
+/services/index-compute-cpp/search_engine.grpc.pb.*
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
+*.log
+
+# Docker / volumes
+.docker-volumes/
+pgdata/
+redisdata/
+
+# IDEs & Editors
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.gemini/
+.agents/
+
+# System files
+.DS_Store
+Thumbs.db

@@ -1,0 +1,73 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: search-engine-db
+    environment:
+      POSTGRES_DB: search_engine
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d search_engine"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  cache:
+    image: redis:7.4-alpine
+    container_name: search-engine-cache
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  index-compute:
+    build:
+      context: .
+      dockerfile: ./services/index-compute-cpp/Dockerfile
+    container_name: search-engine-index-compute
+    ports:
+      - "50051:50051"
+
+  gateway:
+    build:
+      context: ./services/crawler-gateway-go
+      dockerfile: Dockerfile
+    container_name: search-engine-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      - DATABASE_URL=postgres://postgres:postgres@db:5432/search_engine?sslmode=disable
+      - REDIS_URL=cache:6379
+      - IPC_ADDRESS=index-compute:50051
+    depends_on:
+      db:
+        condition: service_healthy
+      cache:
+        condition: service_healthy
+      index-compute:
+        condition: service_started
+
+  frontend:
+    build:
+      context: ./apps/search-frontend-astro
+      dockerfile: Dockerfile
+    container_name: search-engine-frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - gateway
+
+volumes:
+  pgdata:
+  redisdata:

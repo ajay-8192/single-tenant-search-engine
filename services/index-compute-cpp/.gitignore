@@ -1,0 +1,15 @@
+# C++ / index-compute-cpp
+/services/index-compute-cpp/build/
+/services/index-compute-cpp/cmake-build-*/
+/services/index-compute-cpp/out/
+/services/index-compute-cpp/index_compute_server
+/services/index-compute-cpp/search_engine.pb.*
+/services/index-compute-cpp/search_engine.grpc.pb.*
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
+*.log

@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package search_engine;
+
+option go_package = "services/crawler-gateway-go/internal/ipc/pb";
+
+// Compiling service exposed by the unmanaged C++ tier
+service HTMLProcessor {
+  rpc ExtractAndTokenize (ProcessDocumentRequest) returns (ProcessDocumentResponse);
+}
+
+// Ingestion payload containing the raw web page data stream
+message ProcessDocumentRequest {
+  string target_url = 1;
+  string raw_html_content = 2;
+}
+
+// Computed index metadata return block
+message ProcessDocumentResponse {
+  bool success = 1;
+  string error_log = 2;
+  string page_title = 3;
+  string meta_description = 4;
+  map<string, int32> token_frequencies = 5; // Term frequencies calculated by C++
+}

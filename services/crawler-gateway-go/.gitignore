@@ -1,0 +1,12 @@
+# Go / crawler-gateway-go
+/services/crawler-gateway-go/crawler-gateway-go
+/services/crawler-gateway-go/gateway
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work
+go.work.sum
