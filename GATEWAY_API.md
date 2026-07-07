@@ -36,15 +36,15 @@ curl -X GET "http://localhost:8080/api/v1/search?q=sports+scheduler"
   "cached": false,
   "results": [
     {
-      "target_url": "https://playo.co/about",
-      "page_title": "Playo - Sports Venues & Group Scheduler",
-      "meta_description": "Find sports venues, book courts, schedule games with friends, and join active playgroups.",
+      "target_url": "https://example.com/about",
+      "page_title": "Example Domain - About Us",
+      "meta_description": "Learn more about the example domain, our mission, and our services.",
       "score": 45
     },
     {
-      "target_url": "https://playo.co/venues",
-      "page_title": "Sports Court Booking & Venues",
-      "meta_description": "Search and book badminton courts, football turfs, tennis courts, and swimming pools nearby.",
+      "target_url": "https://example.com/services",
+      "page_title": "Example Services - Custom Integration",
+      "meta_description": "Discover custom integration services, developer APIs, and documentation.",
       "score": 12
     }
   ]
@@ -79,7 +79,7 @@ Instructs the crawler worker to perform a breadth-first scrape starting at a see
 curl -X POST http://localhost:8080/api/v1/crawl \
   -H "Content-Type: application/json" \
   -d '{
-    "seed_url": "https://playo.co/",
+    "seed_url": "https://example.com/",
     "crawl_depth_limit": 2,
     "max_pages_per_domain": 100,
     "user_agent_identifier": "NexusSearchBot/1.0"
@@ -90,7 +90,7 @@ curl -X POST http://localhost:8080/api/v1/crawl \
 ```json
 {
   "status": "Crawl job initiated successfully",
-  "seed_url": "https://playo.co/",
+  "seed_url": "https://example.com/",
   "depth_limit": 2
 }
 ```
@@ -112,9 +112,9 @@ curl -X GET "http://localhost:8080/api/v1/documents"
 ```json
 [
   {
-    "target_url": "https://playo.co/",
-    "page_title": "Playo - The World's Largest Sports Community App",
-    "meta_description": "Book sports courts, find play partners, track scores, and coordinate activities.",
+    "target_url": "https://example.com/",
+    "page_title": "Example Domain",
+    "meta_description": "This domain is for use in illustrative examples in documents.",
     "crawled_at": "2026-07-07T12:00:00Z"
   }
 ]
@@ -165,7 +165,7 @@ curl -X GET "http://localhost:8080/api/v1/logs"
 ```json
 [
   "[17:11:18.102] [INIT] Initialized CrawlerOS Router Engine... OK",
-  "[17:12:05.420] [INFO] Scraping page 1: https://playo.co/ (Depth: 0)",
+  "[17:12:05.420] [INFO] Scraping page 1: https://example.com/ (Depth: 0)",
   "[17:12:06.115] [INFO] Sent gRPC ProcessDocumentRequest to C++ Core parser"
 ]
 ```
