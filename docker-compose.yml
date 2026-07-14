@@ -62,6 +62,8 @@ services:
     build:
       context: ./apps/search-frontend-astro
       dockerfile: Dockerfile
+      args:
+        - PUBLIC_API_URL=${PUBLIC_API_URL:-http://localhost:8080}
     container_name: search-engine-frontend
     ports:
       - "3000:3000"

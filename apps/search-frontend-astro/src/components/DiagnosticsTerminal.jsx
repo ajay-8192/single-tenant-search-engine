@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
+import { API_BASE_URL } from '../config';
 
 const DiagnosticsTerminal = () => {
   const [logs, setLogs] = useState([]);
@@ -9,7 +10,7 @@ const DiagnosticsTerminal = () => {
   const fetchLogs = async () => {
     if (isPaused) return; // Stop fetching if stream is paused
     try {
-      const res = await fetch('http://localhost:8080/api/v1/logs');
+      const res = await fetch(`${API_BASE_URL}/api/v1/logs`);
       if (res.ok) {
         const data = await res.json();
         setLogs(data);

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { API_BASE_URL } from '../config';
 
 const DocumentExplorer = () => {
   const [documents, setDocuments] = useState([]);
@@ -7,7 +8,7 @@ const DocumentExplorer = () => {
 
   const fetchDocuments = async () => {
     try {
-      const res = await fetch('http://localhost:8080/api/v1/documents');
+      const res = await fetch(`${API_BASE_URL}/api/v1/documents`);
       if (res.ok) {
         const data = await res.json();
         setDocuments(data || []);

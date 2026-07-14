@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { API_BASE_URL } from '../config';
 
 const CrawlerConfig = ({ onboardedDomain }) => {
   const defaultSeeds = onboardedDomain
@@ -29,7 +30,7 @@ const CrawlerConfig = ({ onboardedDomain }) => {
     const targetUrl = pathsList[0];
 
     try {
-      const res = await fetch('http://localhost:8080/api/v1/crawl', {
+      const res = await fetch(`${API_BASE_URL}/api/v1/crawl`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

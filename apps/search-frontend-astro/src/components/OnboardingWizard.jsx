@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { API_BASE_URL } from '../config';
 
 const OnboardingWizard = ({ onOnboardComplete }) => {
   const [domain, setDomain] = useState('');
@@ -26,7 +27,7 @@ const OnboardingWizard = ({ onOnboardComplete }) => {
     try {
       // Trigger initial search crawl index on the backend gateway
       const seedUrl = `https://${domain.trim()}`;
-      const response = await fetch('http://localhost:8080/api/v1/crawl', {
+      const response = await fetch(`${API_BASE_URL}/api/v1/crawl`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

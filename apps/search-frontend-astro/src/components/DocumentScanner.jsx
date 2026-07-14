@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { API_BASE_URL } from '../config';
 
 const DocumentScanner = () => {
   const [documents, setDocuments] = useState([]);
@@ -12,7 +13,7 @@ const DocumentScanner = () => {
   const fetchDocuments = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch('http://localhost:8080/api/v1/documents');
+      const res = await fetch(`${API_BASE_URL}/api/v1/documents`);
       if (res.ok) {
         const data = await res.json();
         setDocuments(data || []);
@@ -31,7 +32,7 @@ const DocumentScanner = () => {
   const handleForceReIndex = async (targetUrl) => {
     setActionStatus({ text: `Initializing re-index for: ${targetUrl}...`, type: 'info' });
     try {
-      const res = await fetch('http://localhost:8080/api/v1/crawl', {
+      const res = await fetch(`${API_BASE_URL}/api/v1/crawl`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -63,7 +64,7 @@ const DocumentScanner = () => {
     setIsPurging(true);
     setActionStatus(null);
     try {
-      const res = await fetch(`http://localhost:8080/api/v1/documents/${targetPurgeId}`, {
+      const res = await fetch(`${API_BASE_URL}/api/v1/documents/${targetPurgeId}`, {
         method: 'DELETE',
       });
 

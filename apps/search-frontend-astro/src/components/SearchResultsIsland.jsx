@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { API_BASE_URL } from '../config';
 
 const SearchResultsIsland = () => {
   const [queryInput, setQueryInput] = useState('');
@@ -18,7 +19,7 @@ const SearchResultsIsland = () => {
 
     try {
       // Hit the Go Gateway Search Endpoint
-      const response = await fetch(`http://localhost:8080/api/v1/search?q=${encodeURIComponent(queryInput)}`);
+      const response = await fetch(`${API_BASE_URL}/api/v1/search?q=${encodeURIComponent(queryInput)}`);
       if (response.ok) {
         const payloadData = await response.json();
         setResultsList(payloadData.results || []);

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { API_BASE_URL } from '../config';
 
 const Dashboard = ({ onboardedDomain }) => {
   const [metrics, setMetrics] = useState({
@@ -19,13 +20,13 @@ const Dashboard = ({ onboardedDomain }) => {
 
   const fetchStats = async () => {
     try {
-      const hRes = await fetch('http://localhost:8080/api/v1/health');
+      const hRes = await fetch(`${API_BASE_URL}/api/v1/health`);
       if (hRes.ok) {
         const data = await hRes.json();
         setMetrics(data);
       }
 
-      const dRes = await fetch('http://localhost:8080/api/v1/documents');
+      const dRes = await fetch(`${API_BASE_URL}/api/v1/documents`);
       if (dRes.ok) {
         const docs = await dRes.json();
         setTotalPages(docs.length);
