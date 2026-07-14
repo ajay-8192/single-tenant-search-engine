@@ -1,5 +1,16 @@
 # Release Notes: Nexus Search Engine
 
+## v0.1.2-beta (July 14, 2026)
+
+This release introduces environment-based parameterization for frontend API connections, enabling flexible deployment topologies and decoupled backend/frontend service provisioning.
+
+### 🚀 Key Enhancements
+*   **Centralized API URL Resolution**: Extracted hardcoded `localhost:8080` endpoints from Astro/React components into a unified [config.js](file:///s:/ajay-git/search-engine/apps/search-frontend-astro/src/config.js) configuration layer.
+*   **Build-time Environment Injection**: Configured Vite build parameters to read `PUBLIC_API_URL` during static site generation (SSG) in the multi-stage [Dockerfile](file:///s:/ajay-git/search-engine/apps/search-frontend-astro/Dockerfile).
+*   **Docker Compose Interpolation**: Integrated `PUBLIC_API_URL` as a build argument in [docker-compose.yml](file:///s:/ajay-git/search-engine/docker-compose.yml), supporting default fallbacks to `http://localhost:8080` for developer ease.
+
+---
+
 ## v0.1.1-beta (July 14, 2026)
 
 This release contains critical bug fixes to the core C++ tokenization and parsing logic, ensuring accurate keyword indexing and search match rates.
