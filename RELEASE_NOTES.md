@@ -1,4 +1,17 @@
-# Release Notes: Nexus Search Engine v0.1.0-beta
+# Release Notes: Nexus Search Engine
+
+## v0.1.1-beta (July 14, 2026)
+
+This release contains critical bug fixes to the core C++ tokenization and parsing logic, ensuring accurate keyword indexing and search match rates.
+
+### 🛠️ Fixes & Optimizations
+*   **C++ Tokenizer Boundary Fix**: Fixed a bug where short words (length `<= 2`) were not reset upon encountering a word boundary, which caused them to concatenate with subsequent words and corrupt index entries.
+*   **HTML Tag Stripping Spacing**: Fixed an issue where HTML tags were stripped without inserting spaces, causing words inside adjacent HTML tags to merge (e.g., merging "developer" and "dhiraj" into `developerdhiraj`). Spaces are now correctly injected at tag boundaries.
+*   **Improved Search Accuracy**: Searching for names like "Ajay", "Shreyas", and "Dhiraj" now correctly returns results with case-insensitive matching.
+
+---
+
+## v0.1.0-beta
 
 Welcome to the first **Beta Release (v0.1.0-beta)** of the Nexus Search Engine stack! This release introduces a high-performance, single-tenant, isolated vertical search architecture designed to crawl, index, and query websites with complete data sovereignty and sub-millisecond keyword lookup speeds.
 
