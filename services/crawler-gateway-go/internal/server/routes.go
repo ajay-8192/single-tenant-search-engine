@@ -102,6 +102,7 @@ func (s *Server) registerRoutes() {
 		v1.GET("/health", s.handleHealth)
 		v1.GET("/search", s.handleSearch)
 		v1.GET("/documents", s.handleDocuments)
+		v1.DELETE("/documents/:id", s.handleDeleteDocument)
 		v1.GET("/logs", s.handleLogs)
 		v1.POST("/crawl", s.handleCrawl)
 		v1.POST("/clear-logs", s.handleClearLogs)
@@ -202,6 +203,34 @@ func (s *Server) handleDocuments(c *gin.Context) {
 	c.JSON(http.StatusOK, docs)
 }
 
+func (s *Server) handleDeleteDocument(c *gin.Context) {
+	id := c.Param("id")
+	if id == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "id parameter is required"})
+		return
+	}
+
+	err := s.repo.DeleteDocument(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	s.AddLog("[INFO] Purged document node from index ledger: %s", id)
+
+	// Flush Redis cache when a document is deleted
+	if !s.isRedisMock {
+		ctx := context.Background()
+		iter := s.rdb.Scan(ctx, 0, "search:cache:*", 0).Iterator()
+		for iter.Next(ctx) {
+			s.rdb.Del(ctx, iter.Val())
+		}
+		s.AddLog("[INFO] Search result caches invalidated.")
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "document purged"})
+}
+
 func (s *Server) handleLogs(c *gin.Context) {
 	s.logsMu.RLock()
 	defer s.logsMu.RUnlock()
@@ -237,6 +266,94 @@ func (s *Server) handleCrawl(c *gin.Context) {
 	})
 }
 
+type crawlCoordinator struct {
+	mu           sync.Mutex
+	visited      map[string]bool
+	depthMap     map[string]int
+	pagesCount   int
+	maxPages     int
+	depthLimit   int
+	workerAgent  string
+	server       *Server
+	tasks        chan crawlTask
+	results      chan crawlResult
+	activeTasks  int
+}
+
+type crawlTask struct {
+	url   string
+	depth int
+}
+
+type crawlResult struct {
+	url      string
+	depth    int
+	htmlBody string
+	err      error
+	links    []string
+}
+
+func (s *Server) crawlWorker(id int, coord *crawlCoordinator, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	for task := range coord.tasks {
+		// Use a local crawler worker instance for safety
+		worker := crawler.NewCrawlerWorker(coord.workerAgent)
+		coord.server.AddLog("[INFO] Worker %d: Scraping page: %s (Depth: %d)", id, task.url, task.depth)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		res, err := worker.FetchRawHTML(ctx, task.url)
+		cancel()
+
+		if err != nil {
+			coord.results <- crawlResult{url: task.url, depth: task.depth, err: err}
+			continue
+		}
+
+		title := "Untitled Page Document"
+		description := "No description available."
+		tokens := make(map[string]int32)
+
+		if coord.server.ipcClient != nil {
+			response, err := coord.server.ipcClient.ExtractAndTokenize(context.Background(), task.url, res.HTMLBody)
+			if err == nil && response.Success {
+				title = response.PageTitle
+				description = response.MetaDescription
+				tokens = response.TokenFrequencies
+				coord.server.AddLog("[SUCCESS] Worker %d: IPC Parse complete. Extracted: %d words", id, len(tokens))
+			} else {
+				errMsg := "IPC error"
+				if err != nil {
+					errMsg = err.Error()
+				} else {
+					errMsg = response.ErrorLog
+				}
+				coord.server.AddLog("[WARNING] Worker %d: C++ IPC Parser failed: %s. Using basic fallback.", id, errMsg)
+				title, description, tokens = coord.server.mockParser(res.HTMLBody)
+			}
+		} else {
+			title, description, tokens = coord.server.mockParser(res.HTMLBody)
+		}
+
+		err = coord.server.repo.SaveIndexedDocument(task.url, title, description, tokens)
+		if err != nil {
+			coord.server.AddLog("[ERROR] Worker %d: Database persistence failed for %s: %s", id, task.url, err.Error())
+		}
+
+		var links []string
+		if task.depth < coord.depthLimit {
+			links = crawler.ExtractDomainLinks(res.HTMLBody, task.url)
+		}
+
+		coord.results <- crawlResult{
+			url:      task.url,
+			depth:    task.depth,
+			htmlBody: res.HTMLBody,
+			links:    links,
+		}
+	}
+}
+
 func (s *Server) executeCrawlJob(req CrawlRequest) {
 	s.AddLog("[INFO] Initializing Crawl Job for: %s", req.SeedURL)
 
@@ -259,81 +376,88 @@ func (s *Server) executeCrawlJob(req CrawlRequest) {
 		maxPages = 500
 	}
 
-	visited := make(map[string]bool)
-	queue := []string{req.SeedURL}
-	depthMap := map[string]int{req.SeedURL: 0}
-	pagesCount := 0
+	coord := &crawlCoordinator{
+		visited:     make(map[string]bool),
+		depthMap:    make(map[string]int),
+		maxPages:    maxPages,
+		depthLimit:  depthLimit,
+		workerAgent: req.UserAgentIdentifier,
+		server:      s,
+		tasks:       make(chan crawlTask, maxPages*10),
+		results:     make(chan crawlResult, maxPages*10),
+	}
 
-	worker := crawler.NewCrawlerWorker(req.UserAgentIdentifier)
+	coord.visited[req.SeedURL] = true
+	coord.depthMap[req.SeedURL] = 0
+	coord.activeTasks = 1
+	coord.tasks <- crawlTask{url: req.SeedURL, depth: 0}
 
-	for len(queue) > 0 && pagesCount < maxPages {
-		currentURL := queue[0]
-		queue = queue[1:]
+	numWorkers := 8
+	var wg sync.WaitGroup
+	for i := 1; i <= numWorkers; i++ {
+		wg.Add(1)
+		go s.crawlWorker(i, coord, &wg)
+	}
 
-		if visited[currentURL] {
-			continue
+	// Close results channel when workers terminate
+	go func() {
+		wg.Wait()
+		close(coord.results)
+	}()
+
+	// Manager loop
+	for coord.activeTasks > 0 {
+		res, ok := <-coord.results
+		if !ok {
+			break
 		}
-		visited[currentURL] = true
-		pagesCount++
+		coord.activeTasks--
 
-		currentDepth := depthMap[currentURL]
-		s.AddLog("[INFO] Scraping page %d: %s (Depth: %d)", pagesCount, currentURL, currentDepth)
-
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		res, err := worker.FetchRawHTML(ctx, currentURL)
-		cancel()
-
-		if err != nil {
-			s.AddLog("[ERROR] Failed to fetch %s: %s", currentURL, err.Error())
-			continue
-		}
-
-		title := "Untitled Page Document"
-		description := "No description available."
-		tokens := make(map[string]int32)
-
-		// Handoff to C++ Ingestion Service over gRPC
-		if s.ipcClient != nil {
-			response, err := s.ipcClient.ExtractAndTokenize(context.Background(), currentURL, res.HTMLBody)
-			if err == nil && response.Success {
-				title = response.PageTitle
-				description = response.MetaDescription
-				tokens = response.TokenFrequencies
-				s.AddLog("[SUCCESS] IPC Parse complete. Extracted: %d words", len(tokens))
-			} else {
-				errMsg := "IPC error"
-				if err != nil {
-					errMsg = err.Error()
-				} else {
-					errMsg = response.ErrorLog
-				}
-				s.AddLog("[WARNING] C++ IPC Parser failed: %s. Using basic fallback.", errMsg)
-				title, description, tokens = s.mockParser(res.HTMLBody)
-			}
+		if res.err != nil {
+			s.AddLog("[ERROR] Failed to fetch %s: %s", res.url, res.err.Error())
 		} else {
-			// Fallback to internal parser
-			title, description, tokens = s.mockParser(res.HTMLBody)
-		}
+			coord.mu.Lock()
+			coord.pagesCount++
+			currentPagesCount := coord.pagesCount
+			coord.mu.Unlock()
 
-		// Persist indexing details to database
-		err = s.repo.SaveIndexedDocument(currentURL, title, description, tokens)
-		if err != nil {
-			s.AddLog("[ERROR] Database persistence failed for %s: %s", currentURL, err.Error())
-		}
+			s.AddLog("[INFO] Scraping page %d completed: %s", currentPagesCount, res.url)
 
-		// Extract further links if below depth limit
-		if currentDepth < depthLimit {
-			links := crawler.ExtractDomainLinks(res.HTMLBody, currentURL)
-			for _, link := range links {
-				if !visited[link] && depthMap[link] == 0 {
-					depthMap[link] = currentDepth + 1
-					queue = append(queue, link)
-				}
+			if currentPagesCount >= maxPages {
+				s.AddLog("[INFO] Reached max page cap %d. Stopping crawl sequence.", maxPages)
+				break
 			}
+
+			// Add discovered links to queue
+			for _, link := range res.links {
+				coord.mu.Lock()
+				if !coord.visited[link] && coord.pagesCount+coord.activeTasks < maxPages {
+					coord.visited[link] = true
+					coord.depthMap[link] = res.depth + 1
+					coord.activeTasks++
+					coord.tasks <- crawlTask{url: link, depth: res.depth + 1}
+				}
+				coord.mu.Unlock()
+			}
+		}
+
+		if coord.activeTasks == 0 {
+			break
 		}
 	}
 
-	s.AddLog("[SUCCESS] Crawl Job Complete. Crawled: %d pages.", pagesCount)
+	// Terminate workers
+	close(coord.tasks)
+
+	// Drain results
+	for range coord.results {
+	}
+
+	coord.mu.Lock()
+	finalPagesCount := coord.pagesCount
+	coord.mu.Unlock()
+
+	s.AddLog("[SUCCESS] Crawl Job Complete. Crawled: %d pages.", finalPagesCount)
 }
 
 // mockParser parses HTML tags inside Go to maintain service availability if C++ is offline

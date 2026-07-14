@@ -167,6 +167,13 @@ func (r *Repository) SaveIndexedDocument(url, title, desc string, termFreqs map[
 	return tx.Commit()
 }
 
+var stopWords = map[string]bool{
+	"in": true, "for": true, "at": true, "the": true, "a": true,
+	"of": true, "to": true, "and": true, "on": true, "with": true,
+	"is": true, "by": true, "an": true, "it": true, "from": true,
+	"or": true, "about": true, "as": true,
+}
+
 func (r *Repository) QuerySearchIndex(keywords []string, limit int) ([]SearchResultItem, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -175,13 +182,45 @@ func (r *Repository) QuerySearchIndex(keywords []string, limit int) ([]SearchRes
 		return []SearchResultItem{}, nil
 	}
 
+	// 1. Filter out high-frequency low-value stop words
+	var filteredKeywords []string
+	for _, kw := range keywords {
+		kwLower := strings.ToLower(kw)
+		if !stopWords[kwLower] {
+			filteredKeywords = append(filteredKeywords, kw)
+		}
+	}
+	// Fallback to original keywords if everything was filtered out
+	if len(filteredKeywords) == 0 {
+		filteredKeywords = keywords
+	}
+
 	if r.isMock {
-		scores := make(map[string]int) // docID -> total frequency score
-		for _, kw := range keywords {
+		scores := make(map[string]int)
+		matches := make(map[string]int) // docID -> unique matching terms count
+
+		for _, kw := range filteredKeywords {
 			kwLower := strings.ToLower(kw)
 			if docs, exists := r.invIndex[kwLower]; exists {
 				for docID, freq := range docs {
-					scores[docID] += freq
+					doc := r.documents[docID]
+					boost := int(freq)
+
+					// Target URL match boost
+					if strings.Contains(strings.ToLower(doc.URL), kwLower) {
+						boost += 2000
+					}
+					// Title match boost
+					if strings.Contains(strings.ToLower(doc.Title), kwLower) {
+						boost += 1000
+					}
+					// Description match boost
+					if strings.Contains(strings.ToLower(doc.Description), kwLower) {
+						boost += 200
+					}
+
+					scores[docID] += boost
+					matches[docID]++
 				}
 			}
 		}
@@ -189,14 +228,18 @@ func (r *Repository) QuerySearchIndex(keywords []string, limit int) ([]SearchRes
 		results := []SearchResultItem{}
 		for docID, score := range scores {
 			doc := r.documents[docID]
+			mCount := matches[docID]
+			// Quadratic boost on coordinate matching (matches count)
+			finalScore := score * mCount * mCount
+
 			results = append(results, SearchResultItem{
 				URL:         doc.URL,
 				Title:       doc.Title,
 				Description: doc.Description,
-				Score:       score,
+				Score:       finalScore,
 			})
 		}
-		
+
 		// Sort results by score descending
 		for i := 0; i < len(results); i++ {
 			for j := i + 1; j < len(results); j++ {
@@ -213,22 +256,34 @@ func (r *Repository) QuerySearchIndex(keywords []string, limit int) ([]SearchRes
 	}
 
 	// Prepare placeholder parameters for standard array mapping
-	placeholders := make([]string, len(keywords))
-	args := make([]interface{}, len(keywords)+1)
-	for i, kw := range keywords {
+	placeholders := make([]string, len(filteredKeywords))
+	args := make([]interface{}, len(filteredKeywords)+1)
+	for i, kw := range filteredKeywords {
 		placeholders[i] = fmt.Sprintf("$%d", i+1)
 		args[i] = strings.ToLower(kw)
 	}
-	args[len(keywords)] = limit
+	args[len(filteredKeywords)] = limit
 
+	// SQL Query with:
+	// - term_frequency base score
+	// - ILIKE pattern matching boosts for URL, Title, and Description
+	// - coordination factor boost: COUNT(DISTINCT i.keyword)^2
 	query := fmt.Sprintf(`
-		SELECT d.target_url, d.page_title, d.meta_description, SUM(i.term_frequency) as score
+		SELECT 
+			d.target_url, 
+			d.page_title, 
+			d.meta_description, 
+			(SUM(i.term_frequency + 
+				(CASE WHEN d.target_url ILIKE '%%' || i.keyword || '%%' THEN 2000 ELSE 0 END) + 
+				(CASE WHEN d.page_title ILIKE '%%' || i.keyword || '%%' THEN 1000 ELSE 0 END) + 
+				(CASE WHEN d.meta_description ILIKE '%%' || i.keyword || '%%' THEN 200 ELSE 0 END)
+			) * COUNT(DISTINCT i.keyword) * COUNT(DISTINCT i.keyword)) as score
 		FROM crawled_documents d
 		JOIN inverted_keyword_index i ON d.document_id = i.document_id
 		WHERE i.keyword IN (%s)
 		GROUP BY d.document_id, d.target_url, d.page_title, d.meta_description
 		ORDER BY score DESC
-		LIMIT $%d`, strings.Join(placeholders, ", "), len(keywords)+1)
+		LIMIT $%d`, strings.Join(placeholders, ", "), len(filteredKeywords)+1)
 
 	rows, err := r.db.Query(query, args...)
 	if err != nil {
@@ -289,6 +344,31 @@ func (r *Repository) GetAllDocuments() ([]Document, error) {
 		list = append(list, doc)
 	}
 	return list, nil
+}
+
+func (r *Repository) DeleteDocument(id string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.isMock {
+		if _, exists := r.documents[id]; exists {
+			delete(r.documents, id)
+			// Remove from inverted index
+			for kw, docs := range r.invIndex {
+				if _, exists := docs[id]; exists {
+					delete(docs, id)
+				}
+				if len(docs) == 0 {
+					delete(r.invIndex, kw)
+				}
+			}
+			return nil
+		}
+		return fmt.Errorf("document not found")
+	}
+
+	_, err := r.db.Exec(`DELETE FROM crawled_documents WHERE document_id = $1`, id)
+	return err
 }
 
 func (r *Repository) Close() error {

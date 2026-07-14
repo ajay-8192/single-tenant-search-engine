@@ -19,8 +19,10 @@ ProcessedDocumentModel HTMLDocumentSanitizer::parse_html_document(const std::str
         if (std::isalnum(static_cast<unsigned char>(character))) {
             current_token += std::tolower(static_cast<unsigned char>(character));
         } else {
-            if (!current_token.empty() && current_token.length() > 2) {
-                result.term_frequencies[current_token]++;
+            if (!current_token.empty()) {
+                if (current_token.length() > 2) {
+                    result.term_frequencies[current_token]++;
+                }
                 current_token = "";
             }
         }
@@ -80,21 +82,33 @@ std::string HTMLDocumentSanitizer::strip_html_boilerplate(const std::string& htm
         // Lowercase check for scripts and styles to strip them out
         if (i + 7 < len && (html.compare(i, 8, "<script>") == 0 || html.compare(i, 8, "<SCRIPT>") == 0)) {
             in_script = true;
+            if (write_idx > 0 && buffer[write_idx - 1] != ' ') {
+                buffer[write_idx++] = ' ';
+            }
             i += 7;
             continue;
         }
         if (i + 8 < len && (html.compare(i, 9, "</script>") == 0 || html.compare(i, 9, "</SCRIPT>") == 0)) {
             in_script = false;
+            if (write_idx > 0 && buffer[write_idx - 1] != ' ') {
+                buffer[write_idx++] = ' ';
+            }
             i += 8;
             continue;
         }
         if (i + 6 < len && (html.compare(i, 7, "<style>") == 0 || html.compare(i, 7, "<STYLE>") == 0)) {
             in_style = true;
+            if (write_idx > 0 && buffer[write_idx - 1] != ' ') {
+                buffer[write_idx++] = ' ';
+            }
             i += 6;
             continue;
         }
         if (i + 7 < len && (html.compare(i, 8, "</style>") == 0 || html.compare(i, 8, "</STYLE>") == 0)) {
             in_style = false;
+            if (write_idx > 0 && buffer[write_idx - 1] != ' ') {
+                buffer[write_idx++] = ' ';
+            }
             i += 7;
             continue;
         }
@@ -105,10 +119,16 @@ std::string HTMLDocumentSanitizer::strip_html_boilerplate(const std::string& htm
         
         if (html[i] == '<') {
             in_tag = true;
+            if (write_idx > 0 && buffer[write_idx - 1] != ' ') {
+                buffer[write_idx++] = ' ';
+            }
             continue;
         }
         if (html[i] == '>') {
             in_tag = false;
+            if (write_idx > 0 && buffer[write_idx - 1] != ' ') {
+                buffer[write_idx++] = ' ';
+            }
             continue;
         }
         
